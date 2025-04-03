@@ -103,10 +103,10 @@
                 if (data.updates && data.updates.updatedCells > 0) {
                     resultsDiv.innerHTML += '<p>Data added to Google Sheets.</p>';
                 } else {
-                    resultsDiv.innerHTML += '<p>Failed to add data to Google Sheets.</p>';
+                    resultsDiv.innerHTML += '<p>Failed to add data to Google Sheets.</p>' + rowData + url;
                 }
             })
-            .catch(error => resultsDiv.innerHTML += '<p>Error: ' + rowData + url + error + '</p>');
+            .catch(error => resultsDiv.innerHTML += '<p>Error: '+ error + '</p>');
         }
 
         function viewSheetData() {
