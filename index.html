@@ -1,17 +1,18 @@
 <!DOCTYPE html>
 <html>
-<head>
-    <title>QR/ID Data Management</title>
+  <head>
+    <title>QR/ID Google Sheets</title>
+    <meta charset="utf-8" />
     <style>
-        body { font-family: sans-serif; }
-        #video { width: 300px; height: 225px; border: 1px solid black; }
-        #results { margin-top: 20px; }
-        table { border-collapse: collapse; width: 100%; }
-        th, td { border: 1px solid black; padding: 8px; text-align: left; }
+      body { font-family: sans-serif; }
+      #video { width: 300px; height: 225px; border: 1px solid black; }
+      #results { margin-top: 20px; }
+      table { border-collapse: collapse; width: 100%; }
+      th, td { border: 1px solid black; padding: 8px; text-align: left; }
     </style>
-</head>
-<body>
-    <h1>QR/ID Data Management</h1>
+  </head>
+  <body>
+    <h1>QR/ID Google Sheets</h1>
 
     <input type="text" id="idInput" placeholder="Enter ID">
     <button id="idButton">Submit ID</button>
@@ -21,148 +22,228 @@
 
     <div id="results"></div>
 
+    <button id="authorize_button" onclick="handleAuthClick()">Authorize</button>
+    <button id="signout_button" onclick="handleSignoutClick()">Sign Out</button>
+
+    <pre id="content" style="white-space: pre-wrap;"></pre>
+
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
-    <script>
-        const video = document.getElementById('video');
-        const canvasElement = document.createElement('canvas');
-        const canvas = canvasElement.getContext('2d');
-        const resultsDiv = document.getElementById('results');
-        const scanButton = document.getElementById('scanButton');
-        const idButton = document.getElementById('idButton');
-        const idInput = document.getElementById('idInput');
+    <script type="text/javascript">
+      /* exported gapiLoaded */
+      /* exported gisLoaded */
+      /* exported handleAuthClick */
+      /* exported handleSignoutClick */
 
-        const spreadsheetId = '1YJTMuVnSkcieTWD7HK6o51QR10mKoTYkBxnJDKeCkuQ'; // Replace
-        const apiKey = 'AIzaSyCi64r2af807aNMnsEPH_TJ4D90N40cHAs'; // Replace
-        const range = 'Sheet3'; // Replace
+      const CLIENT_ID = '<YOUR_CLIENT_ID>'; // Replace
+      const API_KEY = '<YOUR_API_KEY>'; // Replace
+      const SPREADSHEET_ID = '<YOUR_SPREADSHEET_ID>'; // Replace
+      const DISCOVERY_DOC = 'https://sheets.googleapis.com/$discovery/rest?version=v4';
+      const SCOPES = 'https://www.googleapis.com/auth/spreadsheets'; // full access
+      const range = 'Sheet1'; // Replace if needed.
 
-        function drawLine(begin, end, color) {
-            canvas.beginPath();
-            canvas.moveTo(begin.x, begin.y);
-            canvas.lineTo(end.x, end.y);
-            canvas.lineWidth = 4;
-            canvas.strokeStyle = color;
-            canvas.stroke();
-        }
+      let tokenClient;
+      let gapiInited = false;
+      let gisInited = false;
 
-        function tick() {
-            if (video.readyState === video.HAVE_ENOUGH_DATA) {
-                canvasElement.height = video.videoHeight;
-                canvasElement.width = video.videoWidth;
-                canvas.drawImage(video, 0, 0, canvasElement.width, canvasElement.height);
-                const imageData = canvas.getImageData(0, 0, canvasElement.width, canvasElement.height);
-                const code = jsQR(imageData.data, imageData.width, imageData.height, {
-                    inversionAttempts: "dontInvert",
-                });
+      document.getElementById('authorize_button').style.visibility = 'hidden';
+      document.getElementById('signout_button').style.visibility = 'hidden';
 
-                if (code) {
-                    drawLine(code.location.topLeftCorner, code.location.topRightCorner, "#FF3B58");
-                    drawLine(code.location.topRightCorner, code.location.bottomRightCorner, "#FF3B58");
-                    drawLine(code.location.bottomRightCorner, code.location.bottomLeftCorner, "#FF3B58");
-                    drawLine(code.location.bottomLeftCorner, code.location.topLeftCorner, "#FF3B58");
+      const video = document.getElementById('video');
+      const canvasElement = document.createElement('canvas');
+      const canvas = canvasElement.getContext('2d');
+      const resultsDiv = document.getElementById('results');
+      const scanButton = document.getElementById('scanButton');
+      const idButton = document.getElementById('idButton');
+      const idInput = document.getElementById('idInput');
 
-                    resultsDiv.innerHTML = `<p>QR Code Data: ${code.data}</p>`;
-                    processData(code.data);
-                }
-            }
-            requestAnimationFrame(tick);
-        }
+      function gapiLoaded() {
+        gapi.load('client', initializeGapiClient);
+      }
 
-        scanButton.addEventListener('click', () => {
-             navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }).then(function(stream) {
-                video.srcObject = stream;
-                video.setAttribute("playsinline", true);
-                video.play();
-                requestAnimationFrame(tick);
-            });
+      async function initializeGapiClient() {
+        await gapi.client.init({
+          apiKey: API_KEY,
+          discoveryDocs: [DISCOVERY_DOC],
         });
+        gapiInited = true;
+        maybeEnableButtons();
+      }
 
-        idButton.addEventListener('click', () => {
-            const id = idInput.value;
-            if (id) {
-                processId(id);
-            }
+      function gisLoaded() {
+        tokenClient = google.accounts.oauth2.initTokenClient({
+          client_id: CLIENT_ID,
+          scope: SCOPES,
+          callback: '',
         });
+        gisInited = true;
+        maybeEnableButtons();
+      }
 
-        function processId(id) {
-            checkIdExists(id).then(exists => {
-                if (exists) {
-                    viewData(id);
-                } else {
-                    createData(id);
-                }
-            });
+      function maybeEnableButtons() {
+        if (gapiInited && gisInited) {
+          document.getElementById('authorize_button').style.visibility = 'visible';
         }
+      }
 
-        function processData(qrData) {
-            try {
-                const data = JSON.parse(qrData);
-                if (data && data.id) {
-                    processId(data.id);
-                } else {
-                    resultsDiv.innerHTML += '<p>Invalid QR Code: ID required.</p>';
-                }
-            } catch (error) {
-                resultsDiv.innerHTML += '<p>Error processing QR code: ' + error + '</p>';
+      function handleAuthClick() {
+        tokenClient.callback = async (resp) => {
+          if (resp.error !== undefined) {
+            throw (resp);
+          }
+          document.getElementById('signout_button').style.visibility = 'visible';
+          document.getElementById('authorize_button').innerText = 'Refresh';
+        };
+
+        if (gapi.client.getToken() === null) {
+          tokenClient.requestAccessToken({ prompt: 'consent' });
+        } else {
+          tokenClient.requestAccessToken({ prompt: '' });
+        }
+      }
+
+      function handleSignoutClick() {
+        const token = gapi.client.getToken();
+        if (token !== null) {
+          google.accounts.oauth2.revoke(token.access_token);
+          gapi.client.setToken('');
+          document.getElementById('content').innerText = '';
+          document.getElementById('authorize_button').innerText = 'Authorize';
+          document.getElementById('signout_button').style.visibility = 'hidden';
+        }
+      }
+
+      function drawLine(begin, end, color) {
+        canvas.beginPath();
+        canvas.moveTo(begin.x, begin.y);
+        canvas.lineTo(end.x, end.y);
+        canvas.lineWidth = 4;
+        canvas.strokeStyle = color;
+        canvas.stroke();
+      }
+
+      function tick() {
+        if (video.readyState === video.HAVE_ENOUGH_DATA) {
+          canvasElement.height = video.videoHeight;
+          canvasElement.width = video.videoWidth;
+          canvas.drawImage(video, 0, 0, canvasElement.width, canvasElement.height);
+          const imageData = canvas.getImageData(0, 0, canvasElement.width, canvasElement.height);
+          const code = jsQR(imageData.data, imageData.width, imageData.height, {
+            inversionAttempts: "dontInvert",
+          });
+
+          if (code) {
+            drawLine(code.location.topLeftCorner, code.location.topRightCorner, "#FF3B58");
+            drawLine(code.location.topRightCorner, code.location.bottomRightCorner, "#FF3B58");
+            drawLine(code.location.bottomRightCorner, code.location.bottomLeftCorner, "#FF3B58");
+            drawLine(code.location.bottomLeftCorner, code.location.topLeftCorner, "#FF3B58");
+
+            resultsDiv.innerHTML = `<p>QR Code Data: ${code.data}</p>`;
+            processData(code.data);
+          }
+        }
+        requestAnimationFrame(tick);
+      }
+
+      scanButton.addEventListener('click', () => {
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }).then(function (stream) {
+          video.srcObject = stream;
+          video.setAttribute("playsinline", true);
+          video.play();
+          requestAnimationFrame(tick);
+        });
+      });
+
+      idButton.addEventListener('click', () => {
+        const id = idInput.value;
+        if (id) {
+          processId(id);
+        }
+      });
+
+      function processId(id) {
+        checkIdExists(id).then((exists) => {
+          if (exists) {
+            viewData(id);
+          } else {
+            createData(id);
+          }
+        });
+      }
+
+      function processData(qrData) {
+        try {
+          const data = JSON.parse(qrData);
+          if (data && data.id) {
+            processId(data.id);
+          } else {
+            resultsDiv.innerHTML += '<p>Invalid QR Code: ID required.</p>';
+          }
+        } catch (error) {
+          resultsDiv.innerHTML += '<p>Error processing QR code: ' + error + '</p>';
+        }
+      }
+
+      async function checkIdExists(id) {
+        try {
+          const response = await gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: SPREADSHEET_ID,
+            range: range,
+          });
+          if (response.result.values) {
+            return response.result.values.some((row) => row[0] === id);
+          }
+          return false;
+        } catch (error) {
+          console.error("Error checking ID:", error);
+          return false;
+        }
+      }
+
+      async function createData(id) {
+        const rowData = [id, "Default Value"];
+        try {
+          const response = await gapi.client.sheets.spreadsheets.values.append({
+            spreadsheetId: SPREADSHEET_ID,
+            range: range,
+            valueInputOption: "RAW",
+            resource: { values: [rowData] },
+          });
+          if (response.result.updates && response.result.updates.updatedCells > 0) {
+            resultsDiv.innerHTML += `<p>ID ${id} created with default data.</p>`;
+            viewData(id);
+          } else {
+            resultsDiv.innerHTML += `<p>Failed to create ID ${id}.</p>`;
+          }
+        } catch (error) {
+          resultsDiv.innerHTML += '<p>Error: ' + error + '</p>';
+        }
+      }
+
+      async function viewData(id) {
+        try {
+          const response = await gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: SPREADSHEET_ID,
+            range: range,
+          });
+          if (response.result.values) {
+            const row = response.result.values.find((row) => row[0] === id);
+            if (row) {
+              let tableHTML = '<table><thead><tr><th>ID</th><th>Value</th></tr></thead><tbody><tr>';
+              row.forEach((cell) => (tableHTML += `<td>${cell}</td>`));
+              tableHTML += '</tr></tbody></table>';
+              resultsDiv.innerHTML = tableHTML;
+            } else {
+              resultsDiv.innerHTML = `<p>ID ${id} not found.</p>`;
             }
+          } else {
+            resultsDiv.innerHTML = '<p>No data found.</p>';
+          }
+        } catch (error) {
+          resultsDiv.innerHTML = `<p>Error fetching data: ${error}</p>`;
         }
-
-        function checkIdExists(id) {
-            const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?key=${apiKey}`;
-            return fetch(url)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.values) {
-                        return data.values.some(row => row[0] === id);
-                    }
-                    return false;
-                })
-                .catch(error => {
-                    console.error("Error checking ID:", error);
-                    return false;
-                });
-        }
-
-        function createData(id) {
-            const rowData = [id, "Default Value"]; // Customize as needed.
-            const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}:append?valueInputOption=RAW&key=${apiKey}`;
-            fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ values: [rowData] })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.updates && data.updates.updatedCells > 0) {
-                    resultsDiv.innerHTML += `<p>ID ${id} created with default data.</p>`;
-                    viewData(id);
-                } else {
-                    resultsDiv.innerHTML += `<p>Failed to create ID ${id}.</p>`;
-                }
-            })
-            .catch(error => resultsDiv.innerHTML += '<p>Error: ' + error + '</p>');
-        }
-
-        function viewData(id) {
-            const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?key=${apiKey}`;
-            fetch(url)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.values) {
-                        const row = data.values.find(row => row[0] === id);
-                        if (row) {
-                            let tableHTML = '<table><thead><tr><th>ID</th><th>Value</th></tr></thead><tbody><tr>';
-                            row.forEach(cell => tableHTML += `<td>${cell}</td>`);
-                            tableHTML += '</tr></tbody></table>';
-                            resultsDiv.innerHTML = tableHTML;
-                        } else {
-                            resultsDiv.innerHTML = `<p>ID ${id} not found.</p>`;
-                        }
-                    } else {
-                        resultsDiv.innerHTML = '<p>No data found.</p>';
-                    }
-                })
-                .catch(error => resultsDiv.innerHTML = `<p>Error fetching data: ${error}</p>`);
-        }
+      }
     </script>
-</body>
+    <script async defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
+    <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
+  </body>
 </html>
