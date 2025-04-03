@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>QR Code Google Sheets</title>
+    <title>QR/ID Data Management</title>
     <style>
         body { font-family: sans-serif; }
         #video { width: 300px; height: 225px; border: 1px solid black; }
@@ -11,7 +11,10 @@
     </style>
 </head>
 <body>
-    <h1>QR Code Google Sheets</h1>
+    <h1>QR/ID Data Management</h1>
+
+    <input type="text" id="idInput" placeholder="Enter ID">
+    <button id="idButton">Submit ID</button>
 
     <video id="video"></video>
     <button id="scanButton">Scan QR Code</button>
@@ -25,6 +28,12 @@
         const canvas = canvasElement.getContext('2d');
         const resultsDiv = document.getElementById('results');
         const scanButton = document.getElementById('scanButton');
+        const idButton = document.getElementById('idButton');
+        const idInput = document.getElementById('idInput');
+
+        const spreadsheetId = '1YJTMuVnSkcieTWD7HK6o51QR10mKoTYkBxnJDKeCkuQ'; // Replace
+        const apiKey = 'AIzaSyCi64r2af807aNMnsEPH_TJ4D90N40cHAs'; // Replace
+        const range = 'Sheet3'; // Replace
 
         function drawLine(begin, end, color) {
             canvas.beginPath();
@@ -61,38 +70,61 @@
         scanButton.addEventListener('click', () => {
              navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }).then(function(stream) {
                 video.srcObject = stream;
-                video.setAttribute("playsinline", true); // required to tell iOS safari we don't want fullscreen
+                video.setAttribute("playsinline", true);
                 video.play();
                 requestAnimationFrame(tick);
             });
         });
 
+        idButton.addEventListener('click', () => {
+            const id = idInput.value;
+            if (id) {
+                processId(id);
+            }
+        });
+
+        function processId(id) {
+            checkIdExists(id).then(exists => {
+                if (exists) {
+                    viewData(id);
+                } else {
+                    createData(id);
+                }
+            });
+        }
+
         function processData(qrData) {
             try {
                 const data = JSON.parse(qrData);
-
-                if (Array.isArray(data)) {
-                    // Assuming data is an array of values to add to the sheet.
-                    addToSheet(data);
-                } else if (typeof data === 'object' && data !== null) {
-                    // Assuming data is an object to add to the sheet.
-                    addToSheet(Object.values(data));
-                } else if (qrData.toLowerCase() === 'view'){
-                    viewSheetData();
+                if (data && data.id) {
+                    processId(data.id);
                 } else {
-                    resultsDiv.innerHTML += '<p>Invalid QR Code Format.</p>';
+                    resultsDiv.innerHTML += '<p>Invalid QR Code: ID required.</p>';
                 }
             } catch (error) {
                 resultsDiv.innerHTML += '<p>Error processing QR code: ' + error + '</p>';
             }
         }
 
-        function addToSheet(rowData) {
-            const spreadsheetId = '1YJTMuVnSkcieTWD7HK6o51QR10mKoTYkBxnJDKeCkuQ'; // Replace with your Sheet ID
-            const apiKey = 'AIzaSyCi64r2af807aNMnsEPH_TJ4D90N40cHAs'; // Replace with your API key.
-            const range = 'Data'; // Replace with your sheet name if needed
+        function checkIdExists(id) {
+            const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?key=${apiKey}`;
+            return fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.values) {
+                        return data.values.some(row => row[0] === id);
+                    }
+                    return false;
+                })
+                .catch(error => {
+                    console.error("Error checking ID:", error);
+                    return false;
+                });
+        }
+
+        function createData(id) {
+            const rowData = [id, "Default Value"]; // Customize as needed.
             const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}:append?valueInputOption=RAW&key=${apiKey}`;
-            
             fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -101,38 +133,32 @@
             .then(response => response.json())
             .then(data => {
                 if (data.updates && data.updates.updatedCells > 0) {
-                    resultsDiv.innerHTML += '<p>Data added to Google Sheets.</p>';
+                    resultsDiv.innerHTML += `<p>ID ${id} created with default data.</p>`;
+                    viewData(id);
                 } else {
-                    resultsDiv.innerHTML += '<p>Failed to add data to Google Sheets.</p>' + rowData + url;
+                    resultsDiv.innerHTML += `<p>Failed to create ID ${id}.</p>`;
                 }
             })
-            .catch(error => resultsDiv.innerHTML += '<p>Error: '+ error + '</p>');
+            .catch(error => resultsDiv.innerHTML += '<p>Error: ' + error + '</p>');
         }
 
-        function viewSheetData() {
-            const spreadsheetId = '1YJTMuVnSkcieTWD7HK6o51QR10mKoTYkBxnJDKeCkuQ'; // Replace with your Sheet ID
-            const apiKey = 'AIzaSyCi64r2af807aNMnsEPH_TJ4D90N40cHAs';//replace with your API key.
-            const range = 'Data'; // Replace with your sheet name if needed
+        function viewData(id) {
             const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?key=${apiKey}`;
-
             fetch(url)
                 .then(response => response.json())
                 .then(data => {
-                    if (data.values && data.values.length > 0) {
-                        const header = data.values[0];
-                        const rows = data.values.slice(1);
-                        let tableHTML = '<table><thead><tr>';
-                        header.forEach(h => tableHTML += `<th>${h}</th>`);
-                        tableHTML += '</tr></thead><tbody>';
-                        rows.forEach(row => {
-                            tableHTML += '<tr>';
+                    if (data.values) {
+                        const row = data.values.find(row => row[0] === id);
+                        if (row) {
+                            let tableHTML = '<table><thead><tr><th>ID</th><th>Value</th></tr></thead><tbody><tr>';
                             row.forEach(cell => tableHTML += `<td>${cell}</td>`);
-                            tableHTML += '</tr>';
-                        });
-                        tableHTML += '</tbody></table>';
-                        resultsDiv.innerHTML = tableHTML;
+                            tableHTML += '</tr></tbody></table>';
+                            resultsDiv.innerHTML = tableHTML;
+                        } else {
+                            resultsDiv.innerHTML = `<p>ID ${id} not found.</p>`;
+                        }
                     } else {
-                        resultsDiv.innerHTML = '<p>No data found in Google Sheets.</p>';
+                        resultsDiv.innerHTML = '<p>No data found.</p>';
                     }
                 })
                 .catch(error => resultsDiv.innerHTML = `<p>Error fetching data: ${error}</p>`);
