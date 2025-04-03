@@ -88,9 +88,9 @@
         }
 
         function addToSheet(rowData) {
-            const spreadsheetId = 'YOUR_SPREADSHEET_ID'; // Replace with your Sheet ID
-            const apiKey = 'YOUR_API_KEY'; // Replace with your API key.
-            const range = 'Sheet1'; // Replace with your sheet name if needed
+            const spreadsheetId = '1YJTMuVnSkcieTWD7HK6o51QR10mKoTYkBxnJDKeCkuQ'; // Replace with your Sheet ID
+            const apiKey = 'AIzaSyCi64r2af807aNMnsEPH_TJ4D90N40cHAs'; // Replace with your API key.
+            const range = 'Data'; // Replace with your sheet name if needed
             const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}:append?valueInputOption=RAW&key=${apiKey}`;
 
             fetch(url, {
@@ -110,9 +110,9 @@
         }
 
         function viewSheetData() {
-            const spreadsheetId = 'YOUR_SPREADSHEET_ID'; // Replace with your Sheet ID
-            const apiKey = 'YOUR_API_KEY';//replace with your API key.
-            const range = 'Sheet1'; // Replace with your sheet name if needed
+            const spreadsheetId = '1YJTMuVnSkcieTWD7HK6o51QR10mKoTYkBxnJDKeCkuQ'; // Replace with your Sheet ID
+            const apiKey = 'AIzaSyCi64r2af807aNMnsEPH_TJ4D90N40cHAs';//replace with your API key.
+            const range = 'Data'; // Replace with your sheet name if needed
             const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?key=${apiKey}`;
 
             fetch(url)
